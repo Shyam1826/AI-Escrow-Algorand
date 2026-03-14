@@ -1,0 +1,16 @@
+{
+  "name": "ai-escrow-platform-monorepo",
+  "private": true,
+  "version": "1.0.0",
+  "description": "AI Escrow Platform - full-stack Algorand-based escrow demo",
+  "workspaces": [
+    "frontend",
+    "backend"
+  ],
+  "scripts": {
+    "start": "npm run dev --workspace frontend",
+    "dev:frontend": "npm run dev --workspace frontend",
+    "dev:backend": "npm run dev --workspace backend",
+    "install:all": "npm install && npm install --workspace frontend && npm install --workspace backend"
+  }
+}
