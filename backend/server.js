@@ -10,10 +10,13 @@ const {
   refundClient
 } = require('./services/algorandService');
 const { generateContract, generatePriceSuggestion } = require('./services/aiService');
+const { OAuth2Client } = require('google-auth-library');
 
 const app = express();
 const PORT = 5000;
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret';
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || 'YOUR_GOOGLE_CLIENT_ID';
+const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
 
 // Middleware
 app.use(cors());
@@ -110,6 +113,49 @@ app.post('/login', async (req, res) => {
 
   const token = generateToken(user);
   res.json({ token, role: user.role });
+});
+
+app.post('/auth/google', async (req, res) => {
+  const { token, role } = req.body;
+
+  if (!token) {
+    return res.status(400).json({ error: 'Token is required' });
+  }
+
+  try {
+    const ticket = await googleClient.verifyIdToken({
+      idToken: token,
+      audience: GOOGLE_CLIENT_ID
+    });
+    const payload = ticket.getPayload();
+    const email = payload.email;
+
+    let user = users.find((u) => u.email === email);
+
+    if (!user) {
+      if (!role) {
+        return res.status(404).json({ error: 'User not found. Please register.', requiresRegistration: true });
+      }
+
+      if (!['client', 'freelancer'].includes(role)) {
+        return res.status(400).json({ error: 'role must be client or freelancer' });
+      }
+
+      user = {
+        id: nextUserId++,
+        email,
+        password: 'OAUTH_USER',
+        role
+      };
+      users.push(user);
+    }
+
+    const jwtToken = generateToken(user);
+    res.json({ token: jwtToken, role: user.role });
+  } catch (err) {
+    console.error('Google Auth Error:', err);
+    res.status(401).json({ error: 'Invalid Google token' });
+  }
 });
 
 // POST /generate-contract

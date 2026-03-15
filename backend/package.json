@@ -9,13 +9,14 @@
   },
   "dependencies": {
     "algosdk": "^2.7.0",
+    "bcryptjs": "^2.4.3",
     "body-parser": "^1.20.3",
     "cors": "^2.8.5",
     "dotenv": "^16.6.1",
     "express": "^4.21.2",
-    "openai": "^4.73.0",
-    "bcryptjs": "^2.4.3",
-    "jsonwebtoken": "^9.0.2"
+    "google-auth-library": "^10.6.1",
+    "jsonwebtoken": "^9.0.2",
+    "openai": "^4.73.0"
   },
   "devDependencies": {
     "nodemon": "^3.1.0"

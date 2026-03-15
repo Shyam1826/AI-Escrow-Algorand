@@ -14,6 +14,7 @@ import Register from './pages/Register.jsx';
 
 import ClientDashboard from './pages/ClientDashboard.jsx';
 import FreelancerDashboard from './pages/FreelancerDashboard.jsx';
+import ProtectedRoute from './components/ProtectedRoute.jsx';
 
 function App() {
   return (
@@ -24,12 +25,54 @@ function App() {
           <Route path="/" element={<Home />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
-          <Route path="/client-dashboard" element={<ClientDashboard />} />
-          <Route path="/freelancer-dashboard" element={<FreelancerDashboard />} />
-          <Route path="/create-job" element={<CreateJob />} />
-          <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/submit-work" element={<SubmitWork />} />
-          <Route path="/negotiation" element={<NegotiationChat />} />
+          <Route
+            path="/client-dashboard"
+            element={
+              <ProtectedRoute allowedRoles={['client']}>
+                <ClientDashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/freelancer-dashboard"
+            element={
+              <ProtectedRoute allowedRoles={['freelancer']}>
+                <FreelancerDashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/create-job"
+            element={
+              <ProtectedRoute allowedRoles={['client']}>
+                <CreateJob />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard"
+            element={
+              <ProtectedRoute>
+                <Dashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/submit-work"
+            element={
+              <ProtectedRoute allowedRoles={['freelancer']}>
+                <SubmitWork />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/negotiation"
+            element={
+              <ProtectedRoute>
+                <NegotiationChat />
+              </ProtectedRoute>
+            }
+          />
         </Routes>
       </main>
     </div>

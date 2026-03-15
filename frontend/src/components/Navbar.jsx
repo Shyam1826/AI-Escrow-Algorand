@@ -7,6 +7,7 @@ function Navbar() {
   const [walletAddress, setWalletAddress] = useState(null);
   const navigate = useNavigate();
   const role = localStorage.getItem('role');
+  const token = localStorage.getItem('token');
 
   const navLinkClasses = ({ isActive }) =>
     `text-sm font-medium px-3 py-2 rounded-lg transition-colors ${
@@ -27,26 +28,38 @@ function Navbar() {
         </Link>
 
         <nav className="flex items-center gap-2">
-          <NavLink to="/create-job" className={navLinkClasses}>
-            Create Job
-          </NavLink>
-          <NavLink to="/dashboard" className={navLinkClasses}>
-            Dashboard
-          </NavLink>
-          <NavLink to="/submit-work" className={navLinkClasses}>
-            Submit Work
-          </NavLink>
-          <NavLink to="/negotiation" className={navLinkClasses}>
-            Negotiation
-          </NavLink>
-          <NavLink to="/client-dashboard" className={navLinkClasses}>
-            Client
-          </NavLink>
-          <NavLink to="/freelancer-dashboard" className={navLinkClasses}>
-            Freelancer
-          </NavLink>
+          {token && (
+            <>
+              {role === 'client' && (
+                <>
+                  <NavLink to="/create-job" className={navLinkClasses}>
+                    Create Job
+                  </NavLink>
+                  <NavLink to="/client-dashboard" className={navLinkClasses}>
+                    Dashboard
+                  </NavLink>
+                </>
+              )}
+              {role === 'freelancer' && (
+                <>
+                  <NavLink to="/submit-work" className={navLinkClasses}>
+                    Submit Work
+                  </NavLink>
+                  <NavLink to="/freelancer-dashboard" className={navLinkClasses}>
+                    Dashboard
+                  </NavLink>
+                </>
+              )}
+              <NavLink to="/dashboard" className={navLinkClasses}>
+                Jobs
+              </NavLink>
+              <NavLink to="/negotiation" className={navLinkClasses}>
+                Negotiation
+              </NavLink>
+            </>
+          )}
           <div className="ml-2 flex items-center gap-2">
-            {role ? (
+            {token ? (
               <button
                 type="button"
                 onClick={() => {
