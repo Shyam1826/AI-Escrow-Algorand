@@ -1,10 +1,12 @@
 import React from "react";
 import { useState } from 'react';
-import { Link, NavLink } from 'react-router-dom';
+import { Link, NavLink, useNavigate } from 'react-router-dom';
 import WalletConnectButton from './WalletConnectButton.jsx';
 
 function Navbar() {
   const [walletAddress, setWalletAddress] = useState(null);
+  const navigate = useNavigate();
+  const role = localStorage.getItem('role');
 
   const navLinkClasses = ({ isActive }) =>
     `text-sm font-medium px-3 py-2 rounded-lg transition-colors ${
@@ -37,7 +39,35 @@ function Navbar() {
           <NavLink to="/negotiation" className={navLinkClasses}>
             Negotiation
           </NavLink>
+          <NavLink to="/client-dashboard" className={navLinkClasses}>
+            Client
+          </NavLink>
+          <NavLink to="/freelancer-dashboard" className={navLinkClasses}>
+            Freelancer
+          </NavLink>
           <div className="ml-2 flex items-center gap-2">
+            {role ? (
+              <button
+                type="button"
+                onClick={() => {
+                  localStorage.removeItem('token');
+                  localStorage.removeItem('role');
+                  navigate('/login');
+                }}
+                className="text-[11px] px-3 py-1 rounded-lg border border-slate-700 text-slate-300 hover:bg-slate-800"
+              >
+                Logout ({role})
+              </button>
+            ) : (
+              <>
+                <NavLink to="/login" className={navLinkClasses}>
+                  Login
+                </NavLink>
+                <NavLink to="/register" className={navLinkClasses}>
+                  Register
+                </NavLink>
+              </>
+            )}
             {walletAddress && (
               <span className="hidden md:inline-flex max-w-[200px] truncate rounded-full bg-slate-900/80 border border-slate-700 px-3 py-1 text-[11px] font-mono text-slate-300">
                 {walletAddress}

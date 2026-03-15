@@ -6,7 +6,6 @@ const API_BASE = 'http://localhost:5000';
 
 function NegotiationChat() {
   const [jobId, setJobId] = useState('');
-  const [sender, setSender] = useState('client');
   const [message, setMessage] = useState('');
   const [messages, setMessages] = useState([]);
   const [loadingSend, setLoadingSend] = useState(false);
@@ -21,9 +20,11 @@ function NegotiationChat() {
     if (!jobId || !message.trim()) return;
     setError('');
 
+    const role = localStorage.getItem('role') || 'client';
+
     const localMessage = {
       id: Date.now(),
-      sender,
+      sender: role,
       message: message.trim(),
       isSystem: false
     };
@@ -33,11 +34,15 @@ function NegotiationChat() {
     setLoadingSend(true);
 
     try {
-      await axios.post(`${API_BASE}/negotiation-message`, {
-        jobId,
-        sender,
-        message: localMessage.message
-      });
+      const token = localStorage.getItem('token');
+      await axios.post(
+        `${API_BASE}/negotiation-message`,
+        {
+          jobId,
+          message: localMessage.message
+        },
+        token ? { headers: { Authorization: `Bearer ${token}` } } : undefined
+      );
     } catch (err) {
       console.error(err);
       setError(err.response?.data?.error || 'Failed to send negotiation message');
@@ -54,9 +59,14 @@ function NegotiationChat() {
     setError('');
     setLoadingAi(true);
     try {
-      const response = await axios.post(`${API_BASE}/ai-price-suggestion`, {
-        jobId
-      });
+      const token = localStorage.getItem('token');
+      const response = await axios.post(
+        `${API_BASE}/ai-price-suggestion`,
+        {
+          jobId
+        },
+        token ? { headers: { Authorization: `Bearer ${token}` } } : undefined
+      );
       const { suggestedPrice, explanation } = response.data || {};
       const text =
         suggestedPrice !== undefined
@@ -88,12 +98,17 @@ function NegotiationChat() {
     setError('');
     setLoadingFinalize(true);
     try {
-      const response = await axios.post(`${API_BASE}/finalize-agreement`, {
-        jobId,
-        agreedPrice,
-        agreedScope,
-        deadline: agreedDeadline
-      });
+      const token = localStorage.getItem('token');
+      const response = await axios.post(
+        `${API_BASE}/finalize-agreement`,
+        {
+          jobId,
+          agreedPrice,
+          agreedScope,
+          deadline: agreedDeadline
+        },
+        token ? { headers: { Authorization: `Bearer ${token}` } } : undefined
+      );
 
       const aiContract = response.data;
       const summary = `Agreement finalized. AI contract: ${aiContract.payment} ALGO, deadline ${aiContract.deadline}.`;
@@ -137,33 +152,6 @@ function NegotiationChat() {
               value={jobId}
               onChange={(e) => setJobId(e.target.value)}
             />
-          </div>
-          <div>
-            <label className="label">Sender</label>
-            <div className="inline-flex rounded-lg border border-slate-700 bg-slate-900 overflow-hidden">
-              <button
-                type="button"
-                onClick={() => setSender('client')}
-                className={`px-3 py-1.5 text-[11px] font-semibold ${
-                  sender === 'client'
-                    ? 'bg-slate-700 text-slate-50'
-                    : 'text-slate-400 hover:bg-slate-800'
-                }`}
-              >
-                Client
-              </button>
-              <button
-                type="button"
-                onClick={() => setSender('freelancer')}
-                className={`px-3 py-1.5 text-[11px] font-semibold ${
-                  sender === 'freelancer'
-                    ? 'bg-slate-700 text-slate-50'
-                    : 'text-slate-400 hover:bg-slate-800'
-                }`}
-              >
-                Freelancer
-              </button>
-            </div>
           </div>
         </div>
 

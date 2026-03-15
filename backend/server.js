@@ -2,6 +2,8 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
+const jwt = require('jsonwebtoken');
+const bcrypt = require('bcryptjs');
 const {
   createEscrowTransaction,
   releasePayment,
@@ -11,19 +13,108 @@ const { generateContract, generatePriceSuggestion } = require('./services/aiServ
 
 const app = express();
 const PORT = 5000;
+const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret';
 
 // Middleware
 app.use(cors());
 app.use(express.json()); // built-in body parser for JSON
 app.use(bodyParser.urlencoded({ extended: false })); // demonstrate body-parser usage as requested
 
-// In-memory job store for demo purposes
+// In-memory stores for demo purposes
 let jobs = [];
 // In-memory negotiation messages keyed by jobId
 const negotiations = {};
+// In-memory user store
+let users = [];
+let nextUserId = 1;
+
+function generateToken(user) {
+  return jwt.sign(
+    { id: user.id, email: user.email, role: user.role },
+    JWT_SECRET,
+    { expiresIn: '7d' }
+  );
+}
+
+function authMiddleware(req, res, next) {
+  const authHeader = req.headers.authorization || '';
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+
+  if (!token) {
+    return res.status(401).json({ error: 'Authorization token missing' });
+  }
+
+  try {
+    const payload = jwt.verify(token, JWT_SECRET);
+    req.user = payload;
+    next();
+  } catch {
+    return res.status(401).json({ error: 'Invalid or expired token' });
+  }
+}
+
+function requireRole(role) {
+  return (req, res, next) => {
+    if (!req.user || req.user.role !== role) {
+      return res.status(403).json({ error: 'Forbidden: insufficient role' });
+    }
+    next();
+  };
+}
+
+// Auth endpoints
+app.post('/register', async (req, res) => {
+  const { email, password, role } = req.body;
+
+  if (!email || !password || !role) {
+    return res.status(400).json({ error: 'email, password, and role are required' });
+  }
+
+  if (!['client', 'freelancer'].includes(role)) {
+    return res.status(400).json({ error: 'role must be client or freelancer' });
+  }
+
+  const existing = users.find((u) => u.email === email);
+  if (existing) {
+    return res.status(409).json({ error: 'User with this email already exists' });
+  }
+
+  const hashed = await bcrypt.hash(password, 10);
+  const user = {
+    id: nextUserId++,
+    email,
+    password: hashed,
+    role
+  };
+  users.push(user);
+
+  res.status(201).json({ id: user.id, email: user.email, role: user.role });
+});
+
+app.post('/login', async (req, res) => {
+  const { email, password } = req.body;
+
+  if (!email || !password) {
+    return res.status(400).json({ error: 'email and password are required' });
+  }
+
+  const user = users.find((u) => u.email === email);
+  if (!user) {
+    return res.status(401).json({ error: 'Invalid credentials' });
+  }
+
+  const valid = await bcrypt.compare(password, user.password);
+  if (!valid) {
+    return res.status(401).json({ error: 'Invalid credentials' });
+  }
+
+  const token = generateToken(user);
+  res.json({ token, role: user.role });
+});
 
 // POST /generate-contract
-app.post('/generate-contract', async (req, res) => {
+// Only clients can create jobs / contracts
+app.post('/generate-contract', authMiddleware, requireRole('client'), async (req, res) => {
   const { description, budget, deadline } = req.body;
 
   if (!description || !budget || !deadline) {
@@ -45,6 +136,8 @@ app.post('/generate-contract', async (req, res) => {
     job: description,
     payment: budget,
     deadline,
+    clientId: req.user.id,
+    freelancerId: null,
     status: 'created',
     escrowTxId: null,
     aiContract
@@ -58,8 +151,19 @@ app.post('/generate-contract', async (req, res) => {
 });
 
 // GET /jobs
-app.get('/jobs', (req, res) => {
-  res.json(jobs);
+// Clients see their own jobs; freelancers see available jobs.
+app.get('/jobs', authMiddleware, (req, res) => {
+  if (req.user.role === 'client') {
+    return res.json(jobs.filter((j) => j.clientId === req.user.id));
+  }
+
+  if (req.user.role === 'freelancer') {
+    return res.json(
+      jobs.filter((j) => !j.freelancerId && (j.status === 'created' || j.status === 'agreement_finalized'))
+    );
+  }
+
+  res.json([]);
 });
 
 // POST /create-escrow
@@ -102,7 +206,8 @@ app.post('/create-escrow', async (req, res) => {
 });
 
 // POST /submit-work
-app.post('/submit-work', (req, res) => {
+// Only assigned freelancer can submit work
+app.post('/submit-work', authMiddleware, requireRole('freelancer'), (req, res) => {
   const { contractId, submissionLink } = req.body;
 
   if (!contractId || !submissionLink) {
@@ -115,6 +220,11 @@ app.post('/submit-work', (req, res) => {
     return res.status(404).json({ error: 'Contract not found' });
   }
 
+  if (job.freelancerId && job.freelancerId !== req.user.id) {
+    return res.status(403).json({ error: 'You are not assigned to this job' });
+  }
+
+  job.freelancerId = req.user.id;
   job.status = 'submitted';
   job.submissionLink = submissionLink;
 
@@ -199,12 +309,27 @@ app.post('/refund-client', async (req, res) => {
 });
 
 // POST /negotiation-message
-app.post('/negotiation-message', (req, res) => {
-  const { jobId, sender, message } = req.body;
+// Only the client or assigned freelancer can send messages
+app.post('/negotiation-message', authMiddleware, (req, res) => {
+  const { jobId, message } = req.body;
 
-  if (!jobId || !sender || !message) {
-    return res.status(400).json({ error: 'jobId, sender, and message are required' });
+  if (!jobId || !message) {
+    return res.status(400).json({ error: 'jobId and message are required' });
   }
+
+  const job = jobs.find((j) => j.contractId === Number(jobId) || j.contractId === jobId);
+  if (!job) {
+    return res.status(404).json({ error: 'Job not found' });
+  }
+
+  const isClient = req.user.role === 'client' && job.clientId === req.user.id;
+  const isFreelancer = req.user.role === 'freelancer' && job.freelancerId === req.user.id;
+
+  if (!isClient && !isFreelancer) {
+    return res.status(403).json({ error: 'Not authorized for this negotiation' });
+  }
+
+  const sender = req.user.role;
 
   const key = String(jobId);
   if (!negotiations[key]) {
@@ -225,11 +350,22 @@ app.post('/negotiation-message', (req, res) => {
 });
 
 // POST /ai-price-suggestion
-app.post('/ai-price-suggestion', async (req, res) => {
+app.post('/ai-price-suggestion', authMiddleware, async (req, res) => {
   const { jobId } = req.body;
 
   if (!jobId) {
     return res.status(400).json({ error: 'jobId is required' });
+  }
+
+  const job = jobs.find((j) => j.contractId === Number(jobId) || j.contractId === jobId);
+  if (!job) {
+    return res.status(404).json({ error: 'Job not found' });
+  }
+
+  const isClient = req.user.role === 'client' && job.clientId === req.user.id;
+  const isFreelancer = req.user.role === 'freelancer' && job.freelancerId === req.user.id;
+  if (!isClient && !isFreelancer) {
+    return res.status(403).json({ error: 'Not authorized for this negotiation' });
   }
 
   const key = String(jobId);
@@ -249,7 +385,7 @@ app.post('/ai-price-suggestion', async (req, res) => {
 });
 
 // POST /finalize-agreement
-app.post('/finalize-agreement', async (req, res) => {
+app.post('/finalize-agreement', authMiddleware, async (req, res) => {
   const { jobId, agreedPrice, agreedScope, deadline } = req.body;
 
   if (!jobId || !agreedPrice || !agreedScope || !deadline) {
@@ -262,6 +398,12 @@ app.post('/finalize-agreement', async (req, res) => {
 
   if (!job) {
     return res.status(404).json({ error: 'Job not found' });
+  }
+
+  const isClient = req.user.role === 'client' && job.clientId === req.user.id;
+  const isFreelancer = req.user.role === 'freelancer' && job.freelancerId === req.user.id;
+  if (!isClient && !isFreelancer) {
+    return res.status(403).json({ error: 'Not authorized to finalize this agreement' });
   }
 
   try {
