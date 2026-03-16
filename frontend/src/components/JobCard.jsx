@@ -2,15 +2,15 @@ import React from "react";
 function getStatusBadgeClasses(status) {
   switch (status) {
     case 'created':
-      return 'bg-gray-600 text-white';
+      return 'bg-gray-500/20 text-gray-200';
     case 'escrow_locked':
-      return 'bg-yellow-500 text-black';
+      return 'bg-yellow-500/20 text-yellow-200';
     case 'submitted':
-      return 'bg-blue-500 text-white';
+      return 'bg-blue-500/20 text-blue-200';
     case 'completed':
-      return 'bg-green-500 text-white';
+      return 'bg-emerald-500/20 text-emerald-200';
     case 'refunded':
-      return 'bg-red-500 text-white';
+      return 'bg-rose-500/20 text-rose-200';
     default:
       return 'bg-slate-700 text-slate-100';
   }
@@ -18,6 +18,8 @@ function getStatusBadgeClasses(status) {
 
 function JobCard({
   job,
+  onLockEscrow,
+  locking = false,
   onReleasePayment,
   onRefundClient,
   releasing = false,
@@ -26,6 +28,8 @@ function JobCard({
 }) {
   const isCompletedOrRefunded = job.status === 'completed' || job.status === 'refunded';
   const showEscrowActions = job.status === 'submitted';
+  const canLockEscrow = !job.escrowTxId && (job.status === 'created' || job.status === 'agreement_finalized');
+  const txIdToShow = job.escrowTxId || lastTxId;
 
   return (
     <div className="card flex flex-col gap-3">
@@ -51,7 +55,7 @@ function JobCard({
         <div>
           <p className="text-slate-400">Payment</p>
           <p className="text-slate-100 font-medium">
-            {job.payment} <span className="text-[11px] text-slate-400">ALGO (simulated)</span>
+            {job.payment} <span className="text-[11px] text-slate-400">ALGO</span>
           </p>
         </div>
         <div>
@@ -59,6 +63,23 @@ function JobCard({
           <p className="text-slate-100 font-medium">{job.deadline}</p>
         </div>
       </div>
+
+      {canLockEscrow && (
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-3 text-xs">
+          <button
+            type="button"
+            onClick={onLockEscrow}
+            disabled={!onLockEscrow || locking}
+            className={`inline-flex items-center rounded-lg px-3 py-1.5 text-[11px] font-semibold transition-colors ${
+              !onLockEscrow || locking
+                ? 'bg-yellow-500/20 text-yellow-200 cursor-not-allowed'
+                : 'bg-yellow-500 text-slate-900 hover:bg-yellow-400'
+            }`}
+          >
+            {locking ? 'Locking…' : 'Lock Escrow'}
+          </button>
+        </div>
+      )}
 
       {job.submissionLink && (
         <div className="mt-2 text-xs">
@@ -104,11 +125,22 @@ function JobCard({
             </button>
           </div>
 
-          {lastTxId && (
-            <p className="text-[11px] text-slate-400 break-all">
-              Tx: <span className="font-mono text-slate-200">{lastTxId}</span>
-            </p>
-          )}
+        </div>
+      )}
+
+      {txIdToShow && (
+        <div className="text-[11px] break-all">
+          <p className="text-slate-400">
+            Tx: <span className="font-mono text-slate-200">{txIdToShow}</span>
+          </p>
+          <a
+            href={`https://testnet.algoexplorer.io/tx/${txIdToShow}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[11px] text-blue-400 underline"
+          >
+            View on AlgoExplorer
+          </a>
         </div>
       )}
     </div>

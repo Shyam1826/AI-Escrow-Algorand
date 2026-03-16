@@ -10,6 +10,7 @@
   "dependencies": {
     "@perawallet/connect": "^1.5.1",
     "@react-oauth/google": "^0.13.4",
+    "algosdk": "^3.5.2",
     "axios": "^1.13.6",
     "buffer": "^6.0.3",
     "process": "^0.11.10",

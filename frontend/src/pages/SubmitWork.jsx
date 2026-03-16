@@ -14,17 +14,25 @@ function SubmitWork() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    setSuccess('');
     setLoading(true);
-
+  
     try {
-      const response = await axios.post(`${API_BASE}/submit-work`, {
-        contractId: Number(contractId),
-        submissionLink
-      });
-      if (response.data?.status === 'submitted') {
-        setSuccess('Work submitted successfully. The client can now review and release escrow.');
-      }
+      const token = localStorage.getItem("token");
+  
+      const response = await axios.post(
+        `${API_BASE}/submit-work`,
+        {
+          contractId,
+          submissionLink
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        }
+      );
+  
+      setSuccess('Work submitted successfully');
     } catch (err) {
       console.error(err);
       setError(err.response?.data?.error || 'Failed to submit work');

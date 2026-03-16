@@ -6,6 +6,7 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const {
   createEscrowTransaction,
+  broadcastSignedTransaction,
   releasePayment,
   refundClient
 } = require('./services/algorandService');
@@ -30,6 +31,12 @@ const negotiations = {};
 // In-memory user store
 let users = [];
 let nextUserId = 1;
+
+// Receiver address for escrow funding.
+// NOTE: This is just a receiver account for the demo. Real escrow on Algorand
+// usually uses a LogicSig (smart signature) escrow.
+const ESCROW_ADDRESS =
+  process.env.ESCROW_ADDRESS || 'S6FR4C3H4YWUQCDK2WGWVAXWIC6RRR7FOM4O3C2UAXZKXQ7XWZLNUWGOZE';
 
 function generateToken(user) {
   return jwt.sign(
@@ -213,42 +220,51 @@ app.get('/jobs', authMiddleware, (req, res) => {
 });
 
 // POST /create-escrow
-// Creates an Algorand Testnet payment transaction from a placeholder client
-// address into a placeholder escrow contract address, then stores the
-// simulated transaction ID on the job.
-app.post('/create-escrow', async (req, res) => {
-  const { contractId, amount } = req.body;
+// Accepts a signed transaction from the frontend (Pera Wallet), broadcasts it
+// to Algorand Testnet, confirms it, then stores txId on the job.
+app.post('/create-escrow', authMiddleware, requireRole('client'), async (req, res) => {
+  const { contractId, signedTx } = req.body;
 
-  if (!contractId || !amount) {
-    return res.status(400).json({ error: 'contractId and amount are required' });
+  if (!contractId || !signedTx) {
+    return res.status(400).json({ error: 'contractId and signedTx are required' });
   }
 
   const job = jobs.find((j) => j.contractId === Number(contractId) || j.contractId === contractId);
-
   if (!job) {
     return res.status(404).json({ error: 'Contract not found' });
   }
 
-  try {
-    const clientAddress = 'CLIENT-PLACEHOLDER-ADDRESS';
-    const escrowAddress = 'ESCROW-PLACEHOLDER-ADDRESS';
+  if (job.clientId !== req.user.id) {
+    return res.status(403).json({ error: 'Not authorized to lock escrow for this job' });
+  }
 
-    const result = await createEscrowTransaction(clientAddress, escrowAddress, amount);
+  if (job.escrowTxId) {
+    return res.status(409).json({ error: 'Escrow already locked for this job', escrowTxId: job.escrowTxId });
+  }
+
+  try {
+    const signedBytes = Buffer.from(String(signedTx), 'base64');
+    const result = await broadcastSignedTransaction(new Uint8Array(signedBytes));
 
     job.status = 'escrow_locked';
     job.escrowTxId = result.txId;
 
-    console.log('Escrow locked on Algorand:', {
+    console.log('Escrow locked on Algorand Testnet:', {
       contractId: job.contractId,
-      amount,
-      escrowTxId: result.txId
+      escrowTxId: result.txId,
+      confirmedRound: result.confirmation?.['confirmed-round']
     });
 
     res.json({ status: 'escrow_created', escrowTxId: result.txId });
   } catch (error) {
     console.error('Error creating escrow transaction:', error);
-    res.status(500).json({ error: 'Failed to create escrow transaction' });
+    res.status(500).json({ error: error?.message || 'Failed to create escrow transaction' });
   }
+});
+
+// Public helper endpoint so the frontend can build the payment txn.
+app.get('/escrow-address', (req, res) => {
+  res.json({ escrowAddress: ESCROW_ADDRESS });
 });
 
 // POST /submit-work

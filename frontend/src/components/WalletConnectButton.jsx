@@ -2,16 +2,24 @@ import React from "react";
 import { useState } from 'react';
 import { connectPeraWallet, disconnectPeraWallet } from '../services/perawallet';
 
+function truncateAddress(addr) {
+  if (!addr) return '';
+  if (addr.length <= 10) return addr;
+  return `${addr.slice(0, 4)}...${addr.slice(-3)}`;
+}
+
 function WalletConnectButton({ onConnect, onDisconnect }) {
   const [connecting, setConnecting] = useState(false);
+  const [walletAddress, setWalletAddress] = useState(null);
 
   const handleConnectClick = async () => {
     if (connecting) return;
     setConnecting(true);
     try {
       const address = await connectPeraWallet();
-      if (address && onConnect) {
-        onConnect(address);
+      if (address) {
+        setWalletAddress(address);
+        if (onConnect) onConnect(address);
       }
     } catch (error) {
       console.error('Failed to connect Pera Wallet', error);
@@ -23,6 +31,7 @@ function WalletConnectButton({ onConnect, onDisconnect }) {
   const handleDisconnectClick = async () => {
     try {
       await disconnectPeraWallet();
+      setWalletAddress(null);
     } finally {
       if (onDisconnect) {
         onDisconnect();
@@ -30,7 +39,7 @@ function WalletConnectButton({ onConnect, onDisconnect }) {
     }
   };
 
-  const isConnected = Boolean(onConnect && onDisconnect && false); // Navbar passes actual state
+  const isConnected = Boolean(walletAddress);
 
   return (
     <button
@@ -46,8 +55,8 @@ function WalletConnectButton({ onConnect, onDisconnect }) {
       {connecting
         ? 'Connecting…'
         : isConnected
-        ? 'Disconnect Pera'
-        : 'Connect Pera Wallet'}
+        ? `Disconnect Wallet (${truncateAddress(walletAddress)})`
+        : 'Connect Wallet'}
     </button>
   );
 }

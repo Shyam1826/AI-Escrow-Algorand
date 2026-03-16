@@ -26,6 +26,40 @@ async function getSuggestedParamsSafe() {
   }
 }
 
+async function waitForConfirmation(txId, timeoutRounds = 12) {
+  const status = await algodClient.status().do();
+  let currentRound = status['last-round'];
+
+  for (let i = 0; i < timeoutRounds; i++) {
+    const pendingInfo = await algodClient.pendingTransactionInformation(txId).do();
+    if (pendingInfo?.['confirmed-round'] && pendingInfo['confirmed-round'] > 0) {
+      return pendingInfo;
+    }
+    if (pendingInfo?.['pool-error']) {
+      throw new Error(`Transaction pool error: ${pendingInfo['pool-error']}`);
+    }
+
+    await algodClient.statusAfterBlock(currentRound + 1).do();
+    currentRound += 1;
+  }
+
+  throw new Error(`Transaction not confirmed after ${timeoutRounds} rounds`);
+}
+
+/**
+ * Broadcast a signed transaction to Algorand and wait for confirmation.
+ * @param {Uint8Array} signedTxnBytes
+ */
+async function broadcastSignedTransaction(signedTxnBytes) {
+  const sendResult = await algodClient.sendRawTransaction(signedTxnBytes).do();
+  const txId = sendResult?.txId || sendResult?.txid;
+  if (!txId) {
+    throw new Error('Algod did not return a transaction id');
+  }
+  const confirmation = await waitForConfirmation(txId);
+  return { txId, confirmation };
+}
+
 /**
  * Build a payment transaction that sends funds from a client address
  * to an escrow (contract) address on Algorand Testnet.
@@ -104,6 +138,7 @@ async function refundClient(clientAddress, amount) {
 
 module.exports = {
   createEscrowTransaction,
+  broadcastSignedTransaction,
   releasePayment,
   refundClient
 };

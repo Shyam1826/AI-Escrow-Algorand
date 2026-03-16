@@ -2,8 +2,14 @@ import React from "react";
 import { useEffect, useState } from 'react';
 import axios from 'axios';
 import JobCard from '../components/JobCard.jsx';
+import algosdk from 'algosdk';
+import { Buffer } from 'buffer';
+import { connectPeraWallet, signTxnWithPera } from '../services/perawallet';
 
 const API_BASE = 'http://localhost:5000';
+const ALGOD_SERVER = 'https://testnet-api.algonode.cloud';
+const ALGOD_PORT = '';
+const ALGOD_TOKEN = '';
 
 function Dashboard() {
   const [jobs, setJobs] = useState([]);
@@ -14,10 +20,17 @@ function Dashboard() {
   const [refundLoadingId, setRefundLoadingId] = useState(null);
   const [txByContractId, setTxByContractId] = useState({});
 
+  const authHeaders = () => {
+    const token = localStorage.getItem('token');
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  };
+
   const fetchJobs = async () => {
     setError('');
     try {
-      const response = await axios.get(`${API_BASE}/jobs`);
+      const response = await axios.get(`${API_BASE}/jobs`, {
+        headers: authHeaders()
+      });
       setJobs(response.data || []);
     } catch (err) {
       console.error(err);
@@ -31,14 +44,51 @@ function Dashboard() {
     fetchJobs();
   }, []);
 
-  const handleDepositEscrow = async (job) => {
+  const handleLockEscrow = async (job) => {
     setError('');
     setEscrowLoadingId(job.contractId);
     try {
-      await axios.post(`${API_BASE}/create-escrow`, {
-        contractId: job.contractId,
-        amount: job.payment
+      const address = await connectPeraWallet();
+      if (!address) {
+        throw new Error('Wallet connection failed');
+      }
+
+      const escrowInfo = await axios.get(`${API_BASE}/escrow-address`);
+      const escrowAddress = escrowInfo.data?.escrowAddress;
+      if (!escrowAddress) {
+        throw new Error('Escrow address missing from backend');
+      }
+
+      const algodClient = new algosdk.Algodv2(ALGOD_TOKEN, ALGOD_SERVER, ALGOD_PORT);
+      const suggestedParams = await algodClient.getTransactionParams().do();
+
+      const amountMicroAlgos = Math.round(Number(job.payment) * 1e6);
+      const txn = algosdk.makePaymentTxnWithSuggestedParamsFromObject({
+        from: address,
+        to: escrowAddress,
+        amount: amountMicroAlgos,
+        suggestedParams
       });
+
+      const unsignedTxnBytes = txn.toByte();
+      const signedTxnBytes = await signTxnWithPera(unsignedTxnBytes);
+      const signedTxBase64 = Buffer.from(signedTxnBytes).toString('base64');
+
+      const response = await axios.post(
+        `${API_BASE}/create-escrow`,
+        {
+          contractId: job.contractId,
+          signedTx: signedTxBase64
+        },
+        { headers: authHeaders() }
+      );
+
+      if (response.data?.escrowTxId) {
+        setTxByContractId((prev) => ({
+          ...prev,
+          [job.contractId]: response.data.escrowTxId
+        }));
+      }
       await fetchJobs();
     } catch (err) {
       console.error(err);
@@ -54,7 +104,7 @@ function Dashboard() {
     try {
       const response = await axios.post(`${API_BASE}/release-payment`, {
         contractId: job.contractId
-      });
+      }, { headers: authHeaders() });
       if (response.data?.txId) {
         setTxByContractId((prev) => ({
           ...prev,
@@ -76,7 +126,7 @@ function Dashboard() {
     try {
       const response = await axios.post(`${API_BASE}/refund-client`, {
         contractId: job.contractId
-      });
+      }, { headers: authHeaders() });
       if (response.data?.txId) {
         setTxByContractId((prev) => ({
           ...prev,
@@ -115,22 +165,14 @@ function Dashboard() {
             <div key={job.contractId} className="space-y-3">
               <JobCard
                 job={job}
+                onLockEscrow={() => handleLockEscrow(job)}
+                locking={escrowLoadingId === job.contractId}
                 onReleasePayment={() => handleReleasePayment(job)}
                 onRefundClient={() => handleRefundClient(job)}
                 releasing={releaseLoadingId === job.contractId}
                 refunding={refundLoadingId === job.contractId}
                 lastTxId={txByContractId[job.contractId]}
               />
-              <div className="flex justify-end">
-                <button
-                  type="button"
-                  className="btn-primary"
-                  onClick={() => handleDepositEscrow(job)}
-                  disabled={escrowLoadingId === job.contractId}
-                >
-                  {escrowLoadingId === job.contractId ? 'Creating Escrow…' : 'Deposit Escrow'}
-                </button>
-              </div>
             </div>
           ))}
         </div>

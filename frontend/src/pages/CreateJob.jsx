@@ -17,13 +17,24 @@ function CreateJob() {
     e.preventDefault();
     setError('');
     setLoading(true);
-
+  
     try {
-      const response = await axios.post(`${API_BASE}/generate-contract`, {
-        description,
-        budget,
-        deadline
-      });
+      const token = localStorage.getItem("token");
+  
+      const response = await axios.post(
+        `${API_BASE}/generate-contract`,
+        {
+          description,
+          budget,
+          deadline
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        }
+      );
+  
       setContract(response.data);
     } catch (err) {
       console.error(err);
