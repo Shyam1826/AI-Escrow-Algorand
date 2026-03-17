@@ -10,6 +10,7 @@ function FreelancerDashboard() {
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [acceptingId, setAcceptingId] = useState(null);
   const navigate = useNavigate();
 
   const token = localStorage.getItem('token');
@@ -38,6 +39,25 @@ function FreelancerDashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const handleAcceptJob = async (job) => {
+    setError('');
+    setAcceptingId(job.contractId);
+    try {
+      await axios.post(
+        `${API_BASE}/accept-job`,
+        { contractId: job.contractId },
+        authHeaders()
+      );
+      // Refresh list; accepted job will disappear for other freelancers
+      await fetchJobs();
+    } catch (err) {
+      console.error(err);
+      setError(err.response?.data?.error || 'Failed to accept job');
+    } finally {
+      setAcceptingId(null);
+    }
+  };
+
   return (
     <section>
       <h2 className="text-2xl font-semibold text-slate-50 mb-4">Freelancer Dashboard</h2>
@@ -56,6 +76,16 @@ function FreelancerDashboard() {
                 {job.payment} ALGO · Deadline {job.deadline}
               </p>
               <p className="text-[11px] text-slate-400 capitalize">Status: {job.status}</p>
+              <div className="pt-2">
+                <button
+                  type="button"
+                  className="btn-primary text-xs"
+                  onClick={() => handleAcceptJob(job)}
+                  disabled={acceptingId === job.contractId}
+                >
+                  {acceptingId === job.contractId ? 'Accepting…' : 'Accept Job'}
+                </button>
+              </div>
             </div>
           ))}
         </div>

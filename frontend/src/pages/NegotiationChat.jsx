@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { authHeaders } from '../utils/auth';
+import { connectSocket } from '../services/socket';
 
 const API_BASE = import.meta.env.VITE_API_URL;
 
@@ -27,15 +28,78 @@ function NegotiationChat() {
     }
   }, [navigate]);
 
+  useEffect(() => {
+    const socket = connectSocket();
+    if (!socket) return;
+
+    const onNewMessage = (msg) => {
+      if (!msg?.jobId) return;
+      if (String(msg.jobId) !== String(jobId)) return;
+      setMessages((prev) => {
+        const last = prev[prev.length - 1];
+        if (
+          last &&
+          !last.isSystem &&
+          last.sender === msg.senderRole &&
+          last.message === msg.text
+        ) {
+          return prev; // likely socket echo of our optimistic insert
+        }
+        return [
+          ...prev,
+          {
+            id: `${msg.timestamp}-${msg.senderId}`,
+            sender: msg.senderRole,
+            message: msg.text,
+            isSystem: false
+          }
+        ];
+      });
+    };
+
+    socket.on('newMessage', onNewMessage);
+    return () => {
+      socket.off('newMessage', onNewMessage);
+    };
+  }, [jobId]);
+
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (!token) return;
+    if (!jobId) return;
+
+    let cancelled = false;
+    const loadHistory = async () => {
+      setError('');
+      try {
+        const res = await axios.get(`${API_BASE}/messages/${jobId}`, authHeaders());
+        if (cancelled) return;
+        setMessages(
+          (res.data || []).map((m) => ({
+            id: `${m.timestamp}-${m.senderId}`,
+            sender: m.senderRole,
+            message: m.text,
+            isSystem: false
+          }))
+        );
+      } catch (err) {
+        console.error(err);
+        setError(err.response?.data?.error || 'Failed to load messages');
+      }
+    };
+    loadHistory();
+    return () => {
+      cancelled = true;
+    };
+  }, [jobId]);
+
   const handleSend = async () => {
     if (!jobId || !message.trim()) return;
     setError('');
 
-    const role = localStorage.getItem('role') || 'client';
-
     const localMessage = {
       id: Date.now(),
-      sender: role,
+      sender: localStorage.getItem('role') || 'client',
       message: message.trim(),
       isSystem: false
     };
@@ -45,14 +109,8 @@ function NegotiationChat() {
     setLoadingSend(true);
 
     try {
-      await axios.post(
-        `${API_BASE}/negotiation-message`,
-        {
-          jobId,
-          message: localMessage.message
-        },
-        authHeaders()
-      );
+      const socket = connectSocket();
+      socket?.emit('sendMessage', { jobId, text: localMessage.message });
     } catch (err) {
       console.error(err);
       setError(err.response?.data?.error || 'Failed to send negotiation message');

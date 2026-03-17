@@ -1,4 +1,5 @@
 import React from "react";
+import { useEffect } from 'react';
 import { Routes, Route } from 'react-router-dom';
 
 import Navbar from './components/Navbar.jsx';
@@ -15,8 +16,33 @@ import Register from './pages/Register.jsx';
 import ClientDashboard from './pages/ClientDashboard.jsx';
 import FreelancerDashboard from './pages/FreelancerDashboard.jsx';
 import ProtectedRoute from './components/ProtectedRoute.jsx';
+import { connectSocket, disconnectSocket } from './services/socket';
 
 function App() {
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (token) {
+      connectSocket();
+    } else {
+      disconnectSocket();
+    }
+
+    const onStorage = (e) => {
+      if (e.key !== 'token') return;
+      if (e.newValue) {
+        connectSocket();
+      } else {
+        disconnectSocket();
+      }
+    };
+
+    window.addEventListener('storage', onStorage);
+    return () => {
+      window.removeEventListener('storage', onStorage);
+      disconnectSocket();
+    };
+  }, []);
+
   return (
     <div className="min-h-screen bg-slate-950">
       <Navbar />

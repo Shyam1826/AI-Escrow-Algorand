@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { authHeaders } from '../utils/auth';
+import { connectSocket } from '../services/socket';
 
 const API_BASE = import.meta.env.VITE_API_URL;
 
@@ -10,6 +11,7 @@ function ClientDashboard() {
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -34,6 +36,17 @@ function ClientDashboard() {
     };
 
     fetchJobs();
+
+    const socket = connectSocket();
+    const onJobAccepted = (payload) => {
+      setNotice(`Your job #${payload.contractId} was accepted by a freelancer.`);
+      fetchJobs();
+    };
+    socket?.on('jobAccepted', onJobAccepted);
+
+    return () => {
+      socket?.off('jobAccepted', onJobAccepted);
+    };
   }, [navigate]);
 
   return (
@@ -44,6 +57,7 @@ function ClientDashboard() {
           Create New Job
         </Link>
       </div>
+      {notice && <p className="text-xs text-emerald-300 mb-3">{notice}</p>}
       {error && <p className="text-xs text-rose-400 mb-3">{error}</p>}
       {loading ? (
         <p className="text-sm text-slate-400">Loading your jobs…</p>

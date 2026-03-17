@@ -1,9 +1,11 @@
 require('dotenv').config();
 const express = require('express');
+const http = require('http');
 const cors = require('cors');
 const bodyParser = require('body-parser');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
+const { Server } = require('socket.io');
 const {
   createEscrowTransaction,
   broadcastSignedTransaction,
@@ -14,6 +16,7 @@ const { generateContract, generatePriceSuggestion } = require('./services/aiServ
 const { OAuth2Client } = require('google-auth-library');
 
 const app = express();
+const httpServer = http.createServer(app);
 const PORT = process.env.PORT || 5000;
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret';
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || 'YOUR_GOOGLE_CLIENT_ID';
@@ -30,6 +33,8 @@ app.use(bodyParser.urlencoded({ extended: false })); // demonstrate body-parser 
 let jobs = [];
 // In-memory negotiation messages keyed by jobId
 const negotiations = {};
+// In-memory realtime chat messages
+let messages = [];
 // In-memory user store
 let users = [];
 let nextUserId = 1;
@@ -73,6 +78,75 @@ function requireRole(role) {
     next();
   };
 }
+
+function getBearerTokenFromHeader(value) {
+  if (!value) return null;
+  return value.startsWith('Bearer ') ? value.slice(7) : null;
+}
+
+// Socket.IO (rooms by userId)
+const io = new Server(httpServer, {
+  cors: {
+    origin: '*',
+    methods: ['GET', 'POST']
+  }
+});
+
+io.use((socket, next) => {
+  try {
+    const token = socket.handshake.auth?.token || getBearerTokenFromHeader(socket.handshake.headers?.authorization);
+    if (!token) return next(new Error('Unauthorized'));
+    const payload = jwt.verify(token, JWT_SECRET);
+    socket.user = payload;
+    return next();
+  } catch {
+    return next(new Error('Unauthorized'));
+  }
+});
+
+io.on('connection', (socket) => {
+  const userId = socket.user?.id;
+  if (userId) {
+    socket.join(`user:${userId}`);
+  }
+
+  socket.on('sendMessage', (data = {}) => {
+    try {
+      const jobId = data.jobId;
+      const text = String(data.text || '').trim();
+      if (!jobId || !text) return;
+
+      const job = jobs.find((j) => j.contractId === Number(jobId) || j.contractId === jobId);
+      if (!job) return;
+
+      const senderId = socket.user.id;
+      const senderRole = socket.user.role;
+      const isClient = senderId === job.clientId;
+      const isFreelancer = senderId === job.freelancerId;
+      if (!isClient && !isFreelancer) return;
+
+      const receiverId = isClient ? job.freelancerId : job.clientId;
+      if (!receiverId) return; // must be assigned before realtime chat
+      const receiverRole = isClient ? 'freelancer' : 'client';
+
+      const msg = {
+        senderId,
+        senderRole,
+        receiverId,
+        receiverRole,
+        jobId: String(jobId),
+        text,
+        timestamp: new Date().toISOString()
+      };
+
+      messages.push(msg);
+
+      io.to(`user:${senderId}`).to(`user:${receiverId}`).emit('newMessage', msg);
+    } catch {
+      // ignore socket event errors for demo
+    }
+  });
+});
 
 // Auth endpoints
 app.post('/register', async (req, res) => {
@@ -187,12 +261,14 @@ app.post('/generate-contract', authMiddleware, requireRole('client'), async (req
   }
 
   const job = {
+    id: contractId,
     contractId,
     job: description,
     payment: budget,
     deadline,
     clientId: req.user.id,
     freelancerId: null,
+    assignedTo: null,
     status: 'created',
     escrowTxId: null,
     aiContract
@@ -219,6 +295,54 @@ app.get('/jobs', authMiddleware, (req, res) => {
   }
 
   res.json([]);
+});
+
+// POST /accept-job
+// Only freelancers can accept a job. Only one freelancer can accept.
+// Emits `jobAccepted` to the client room.
+app.post('/accept-job', authMiddleware, requireRole('freelancer'), (req, res) => {
+  const { contractId } = req.body;
+  if (!contractId) {
+    return res.status(400).json({ error: 'contractId is required' });
+  }
+
+  const job = jobs.find((j) => j.contractId === Number(contractId) || j.contractId === contractId);
+  if (!job) {
+    return res.status(404).json({ error: 'Job not found' });
+  }
+
+  if (job.freelancerId) {
+    return res.status(409).json({ error: 'Job already accepted', freelancerId: job.freelancerId });
+  }
+
+  job.freelancerId = req.user.id;
+  job.assignedTo = req.user.id;
+  job.status = 'accepted';
+
+  io.to(`user:${job.clientId}`).emit('jobAccepted', {
+    contractId: job.contractId,
+    jobId: job.contractId,
+    clientId: job.clientId,
+    freelancerId: job.freelancerId,
+    status: job.status
+  });
+
+  return res.json({ status: 'accepted', job });
+});
+
+// GET /messages/:jobId
+// Loads stored realtime chat messages for a job.
+app.get('/messages/:jobId', authMiddleware, (req, res) => {
+  const { jobId } = req.params;
+  const job = jobs.find((j) => j.contractId === Number(jobId) || j.contractId === jobId);
+  if (!job) return res.status(404).json({ error: 'Job not found' });
+
+  const isClient = req.user.id === job.clientId;
+  const isFreelancer = req.user.id === job.freelancerId;
+  if (!isClient && !isFreelancer) return res.status(403).json({ error: 'Not authorized' });
+
+  const thread = messages.filter((m) => String(m.jobId) === String(jobId));
+  res.json(thread);
 });
 
 // POST /create-escrow
@@ -494,7 +618,7 @@ app.post('/finalize-agreement', authMiddleware, async (req, res) => {
 });
 
 // Start server
-app.listen(PORT, () => {
+httpServer.listen(PORT, () => {
   console.log(`Backend server running on http://localhost:${PORT}`);
 });
 
