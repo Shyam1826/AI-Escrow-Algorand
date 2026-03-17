@@ -104,13 +104,15 @@ function Login() {
         </div>
 
         <div className="flex justify-center">
-          <GoogleLogin
-            onSuccess={handleGoogleLogin}
-            onError={() => {
-              console.log('Google Login Failed');
-              setError('Google Login failed');
-            }}
-          />
+          {!loading && (
+            <GoogleLogin
+              onSuccess={handleGoogleLogin}
+              onError={() => {
+                console.log('Google Login Failed');
+                setError('Google Login failed');
+              }}
+            />
+          )}
         </div>
       </form>
     </section>

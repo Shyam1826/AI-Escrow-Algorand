@@ -125,13 +125,15 @@ function Register() {
         </div>
 
         <div className="flex justify-center">
-          <GoogleLogin
-            onSuccess={handleGoogleRegister}
-            onError={() => {
-              console.log('Google Registration Failed');
-              setError('Google Registration failed');
-            }}
-          />
+          {!loading && (
+            <GoogleLogin
+              onSuccess={handleGoogleRegister}
+              onError={() => {
+                console.log('Google Registration Failed');
+                setError('Google Registration failed');
+              }}
+            />
+          )}
         </div>
       </form>
     </section>
