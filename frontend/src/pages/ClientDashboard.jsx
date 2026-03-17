@@ -2,8 +2,9 @@ import React from "react";
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import { authHeaders } from '../utils/auth';
 
-const API_BASE = 'http://localhost:5000';
+const API_BASE = import.meta.env.VITE_API_URL;
 
 function ClientDashboard() {
   const [jobs, setJobs] = useState([]);
@@ -22,9 +23,7 @@ function ClientDashboard() {
       setError('');
       setLoading(true);
       try {
-        const res = await axios.get(`${API_BASE}/jobs`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
+        const res = await axios.get(`${API_BASE}/jobs`, authHeaders());
         setJobs(res.data || []);
       } catch (err) {
         console.error(err);

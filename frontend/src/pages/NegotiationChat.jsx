@@ -1,8 +1,10 @@
 import React from "react";
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import { authHeaders } from '../utils/auth';
 
-const API_BASE = 'http://localhost:5000';
+const API_BASE = import.meta.env.VITE_API_URL;
 
 function NegotiationChat() {
   const [jobId, setJobId] = useState('');
@@ -15,6 +17,15 @@ function NegotiationChat() {
   const [agreedPrice, setAgreedPrice] = useState('');
   const [agreedScope, setAgreedScope] = useState('');
   const [agreedDeadline, setAgreedDeadline] = useState('');
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      setError('Please login first');
+      navigate('/login');
+    }
+  }, [navigate]);
 
   const handleSend = async () => {
     if (!jobId || !message.trim()) return;
@@ -34,14 +45,13 @@ function NegotiationChat() {
     setLoadingSend(true);
 
     try {
-      const token = localStorage.getItem('token');
       await axios.post(
         `${API_BASE}/negotiation-message`,
         {
           jobId,
           message: localMessage.message
         },
-        token ? { headers: { Authorization: `Bearer ${token}` } } : undefined
+        authHeaders()
       );
     } catch (err) {
       console.error(err);
@@ -59,13 +69,12 @@ function NegotiationChat() {
     setError('');
     setLoadingAi(true);
     try {
-      const token = localStorage.getItem('token');
       const response = await axios.post(
         `${API_BASE}/ai-price-suggestion`,
         {
           jobId
         },
-        token ? { headers: { Authorization: `Bearer ${token}` } } : undefined
+        authHeaders()
       );
       const { suggestedPrice, explanation } = response.data || {};
       const text =
@@ -98,7 +107,6 @@ function NegotiationChat() {
     setError('');
     setLoadingFinalize(true);
     try {
-      const token = localStorage.getItem('token');
       const response = await axios.post(
         `${API_BASE}/finalize-agreement`,
         {
@@ -107,7 +115,7 @@ function NegotiationChat() {
           agreedScope,
           deadline: agreedDeadline
         },
-        token ? { headers: { Authorization: `Bearer ${token}` } } : undefined
+        authHeaders()
       );
 
       const aiContract = response.data;

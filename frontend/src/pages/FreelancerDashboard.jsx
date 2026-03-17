@@ -1,24 +1,29 @@
 import React from "react";
 import { useEffect, useState } from 'react';
 import axios from 'axios';
+import { useNavigate } from 'react-router-dom';
+import { authHeaders } from '../utils/auth';
 
-const API_BASE = 'http://localhost:5000';
+const API_BASE = import.meta.env.VITE_API_URL;
 
 function FreelancerDashboard() {
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const navigate = useNavigate();
 
   const token = localStorage.getItem('token');
 
   const fetchJobs = async () => {
-    if (!token) return;
+    if (!token) {
+      setError('Please login first');
+      navigate('/login');
+      return;
+    }
     setError('');
     setLoading(true);
     try {
-      const res = await axios.get(`${API_BASE}/jobs`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const res = await axios.get(`${API_BASE}/jobs`, authHeaders());
       setJobs(res.data || []);
     } catch (err) {
       console.error(err);
@@ -29,20 +34,9 @@ function FreelancerDashboard() {
   };
 
   useEffect(() => {
-    if (!token) return;
     fetchJobs();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  if (!token) {
-    return (
-      <section className="max-w-md mx-auto">
-        <p className="text-sm text-slate-400">
-          Please log in as a freelancer to view available jobs.
-        </p>
-      </section>
-    );
-  }
 
   return (
     <section>

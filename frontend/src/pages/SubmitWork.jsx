@@ -1,8 +1,10 @@
 import React from "react";
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import { authHeaders } from '../utils/auth';
 
-const API_BASE = 'http://localhost:5000';
+const API_BASE = import.meta.env.VITE_API_URL;
 
 function SubmitWork() {
   const [contractId, setContractId] = useState('');
@@ -10,14 +12,21 @@ function SubmitWork() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
     setLoading(true);
-  
+    setSuccess('');
+
     try {
       const token = localStorage.getItem("token");
+      if (!token) {
+        setError('Please login first');
+        navigate('/login');
+        return;
+      }
   
       const response = await axios.post(
         `${API_BASE}/submit-work`,
@@ -25,11 +34,7 @@ function SubmitWork() {
           contractId,
           submissionLink
         },
-        {
-          headers: {
-            Authorization: `Bearer ${token}`
-          }
-        }
+        authHeaders()
       );
   
       setSuccess('Work submitted successfully');

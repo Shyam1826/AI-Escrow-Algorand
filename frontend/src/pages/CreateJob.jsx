@@ -1,7 +1,9 @@
 import React from "react";
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import ContractViewer from '../components/ContractViewer.jsx';
+import { authHeaders } from '../utils/auth';
 
 const API_BASE = import.meta.env.VITE_API_URL;
 
@@ -12,6 +14,7 @@ function CreateJob() {
   const [contract, setContract] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -20,6 +23,11 @@ function CreateJob() {
   
     try {
       const token = localStorage.getItem("token");
+      if (!token) {
+        setError('Please login first');
+        navigate('/login');
+        return;
+      }
   
       const response = await axios.post(
         `${API_BASE}/generate-contract`,
@@ -28,11 +36,7 @@ function CreateJob() {
           budget,
           deadline
         },
-        {
-          headers: {
-            Authorization: `Bearer ${token}`
-          }
-        }
+        authHeaders()
       );
   
       setContract(response.data);

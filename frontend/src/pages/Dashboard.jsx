@@ -1,12 +1,14 @@
 import React from "react";
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import JobCard from '../components/JobCard.jsx';
 import algosdk from 'algosdk';
 import { Buffer } from 'buffer';
 import { connectPeraWallet, signTxnWithPera } from '../services/perawallet';
+import { authHeaders } from '../utils/auth';
 
-const API_BASE = 'http://localhost:5000';
+const API_BASE = import.meta.env.VITE_API_URL;
 const ALGOD_SERVER = 'https://testnet-api.algonode.cloud';
 const ALGOD_PORT = '';
 const ALGOD_TOKEN = '';
@@ -19,18 +21,12 @@ function Dashboard() {
   const [releaseLoadingId, setReleaseLoadingId] = useState(null);
   const [refundLoadingId, setRefundLoadingId] = useState(null);
   const [txByContractId, setTxByContractId] = useState({});
-
-  const authHeaders = () => {
-    const token = localStorage.getItem('token');
-    return token ? { Authorization: `Bearer ${token}` } : {};
-  };
+  const navigate = useNavigate();
 
   const fetchJobs = async () => {
     setError('');
     try {
-      const response = await axios.get(`${API_BASE}/jobs`, {
-        headers: authHeaders()
-      });
+      const response = await axios.get(`${API_BASE}/jobs`, authHeaders());
       setJobs(response.data || []);
     } catch (err) {
       console.error(err);
@@ -41,8 +37,15 @@ function Dashboard() {
   };
 
   useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      setError('Please login first');
+      navigate('/login');
+      return;
+    }
     fetchJobs();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [navigate]);
 
   const handleLockEscrow = async (job) => {
     setError('');
@@ -80,7 +83,7 @@ function Dashboard() {
           contractId: job.contractId,
           signedTx: signedTxBase64
         },
-        { headers: authHeaders() }
+        authHeaders()
       );
 
       if (response.data?.escrowTxId) {
@@ -102,9 +105,11 @@ function Dashboard() {
     setError('');
     setReleaseLoadingId(job.contractId);
     try {
-      const response = await axios.post(`${API_BASE}/release-payment`, {
-        contractId: job.contractId
-      }, { headers: authHeaders() });
+      const response = await axios.post(
+        `${API_BASE}/release-payment`,
+        { contractId: job.contractId },
+        authHeaders()
+      );
       if (response.data?.txId) {
         setTxByContractId((prev) => ({
           ...prev,
@@ -124,9 +129,11 @@ function Dashboard() {
     setError('');
     setRefundLoadingId(job.contractId);
     try {
-      const response = await axios.post(`${API_BASE}/refund-client`, {
-        contractId: job.contractId
-      }, { headers: authHeaders() });
+      const response = await axios.post(
+        `${API_BASE}/refund-client`,
+        { contractId: job.contractId },
+        authHeaders()
+      );
       if (response.data?.txId) {
         setTxByContractId((prev) => ({
           ...prev,
